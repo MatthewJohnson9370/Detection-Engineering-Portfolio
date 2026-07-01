@@ -1,75 +1,74 @@
-# Attack Overview
+# Attack Notes — T1123 Audio Capture
 
-## MITRE ATT&CK
+## Purpose
 
-- **Technique:** T1123 - Audio Capture
-- **Tactic:** Collection
+I used two Atomic Red Team tests to generate microphone-related activity in an isolated Windows lab.
 
----
-
-## Objective
-
-The objective of Audio Capture is to collect sensitive information by recording audio from a victim's microphone. Adversaries may use this technique to capture conversations, meetings, verbal credentials, or other information that is not available through traditional file collection methods.
+These tests were used to validate telemetry and detection logic. They did not create or exfiltrate an audio recording.
 
 ---
 
-## Attack Description
+## Test 1 — PowerShell Recording Device Selection
 
-Rather than stealing files or credentials directly, the attacker attempts to use the endpoint's microphone as an intelligence collection source. This activity may be performed by malware, commercially available remote access tools (RATs), or custom tooling after the attacker has established access to the system.
+This test uses the `AudioDeviceCmdlets` PowerShell module to identify a recording device and set it as the active device.
 
-Because many legitimate applications also access microphones (Microsoft Teams, Zoom, Discord, etc.), detection should focus on identifying **unexpected or suspicious microphone access** rather than simply detecting audio recording software.
+### Prerequisite
 
----
+```powershell
+Install-Module -Name AudioDeviceCmdlets -Force
+```
 
-## Attack Prerequisites
+### Command Used
 
-- Initial access to the endpoint
-- Ability to execute code on the victim system
-- Access to an available audio input device
+```powershell
+$mic = Get-AudioDevice -Recording
+Set-AudioDevice -ID $mic.ID
+Start-Sleep -Seconds 5
+```
 
----
+### Expected Telemetry
 
-## Lab Environment
+* PowerShell Script Block Logging: Event ID 4104
+* PowerShell process creation telemetry
+* Script content containing:
 
-| Component | Details |
-|-----------|---------|
-| Operating System | Windows 11 |
-| Endpoint Protection | Elastic Agent |
-| Logging | Sysmon |
-| SIEM | Elastic Security |
+  * `Get-AudioDevice`
+  * `Set-AudioDevice`
+  * `-Recording`
 
----
+### Notes
 
-## Attack Emulation
-
-This attack was emulated in a controlled lab environment to generate endpoint telemetry for detection development.
-
-### Tools
-
-- Manual execution of audio recording software
-- Atomic Red Team (validation)
+This test does not record an audio file. It simulates activity associated with identifying and selecting a recording device.
 
 ---
 
-## Expected Telemetry
+## Test 2 — Microphone ConsentStore Registry Artifact
 
-During testing, the following telemetry is expected to be generated:
+This test writes microphone-related usage values under the Windows ConsentStore registry path.
 
-- Process creation events
-- Parent-child process relationships
-- Command-line arguments
-- Endpoint security telemetry
-- Application execution logs
+### Commands Used
 
----
+```cmd
+reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged\C:#Windows#Temp#atomic.exe /v LastUsedTimeStart /t REG_BINARY /d a273b6f07104d601 /f
 
-## Detection Goal
+reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged\C:#Windows#Temp#atomic.exe /v LastUsedTimeStop /t REG_BINARY /d 96ef514b7204d601 /f
+```
 
-Develop a behavior-based detection capable of identifying suspicious microphone access while minimizing false positives from legitimate collaboration software.
+### Cleanup
 
----
+```cmd
+reg DELETE HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged\C:#Windows#Temp#atomic.exe /f
+```
 
-## References
+### Expected Telemetry
 
-- MITRE ATT&CK: https://attack.mitre.org/techniques/T1123/
-- Atomic Red Team: https://github.com/redcanaryco/atomic-red-team
+* Sysmon Event ID 13 — Registry Value Set
+* Registry path containing:
+
+  * `CapabilityAccessManager`
+  * `ConsentStore`
+  * `microphone`
+
+### Notes
+
+This test manually creates a microphone-related registry artifact. It is useful for validating the ConsentStore detection, but it does not prove that a microphone was accessed or that audio was recorded.
