@@ -1,20 +1,20 @@
+# T1123 - Microphone Privacy Registry Modification
+
+## Overview
+
+Detects modifications to the Windows microphone privacy registry settings. Adversaries may alter these settings to facilitate or enable unauthorized audio capture.
+
+- **MITRE ATT&CK:** T1123 - Audio Capture
+- **Telemetry:** Sysmon Event ID 13 (Registry Value Set)
+- **Platform:** Windows
+- **Severity:** Medium
+- **Risk Score:** 47
+
+---
+
 # Detection Logic
 
-## Objective
-
-Detect suspicious audio capture activity by identifying processes commonly associated with microphone access and analyzing their execution context.
-
----
-
-## Detection Rationale
-
-Windows does not natively generate security events specifically for microphone access. Therefore, this detection relies on process creation telemetry combined with execution context to identify potentially suspicious audio recording activity.
-
----
-
-## Elastic Detection (KQL)
-
-```kql
+```
 event.dataset:"windows.sysmon_operational" and
 event.code:"13" and
 registry.path:*CapabilityAccessManager* and
@@ -22,59 +22,144 @@ registry.path:*ConsentStore* and
 registry.path:*microphone*
 ```
 
----
-
-## Why This Works
-
-This detection identifies processes capable of recording audio. While process execution alone does not confirm malicious activity, it provides valuable telemetry when combined with:
-
-- Parent process
-- Command line
-- User context
-- Execution path
-- Network activity
+> **Note:** If `registry.path` is not populated in your environment, use the equivalent field (e.g., `winlog.event_data.TargetObject`) after validating your Sysmon ingestion pipeline.
+> 
 
 ---
 
-## Telemetry Used
+# Why This Detection Works
 
-| Source | Purpose |
-|---------|---------|
-| Sysmon Event ID 1 | Process Creation |
-| Process Name | Identify recording applications |
-| Parent Process | Execution context |
-| Command Line | Suspicious arguments |
-| Image Path | Detect renamed or relocated binaries |
+This rule detects modifications to the Windows microphone privacy registry path rather than a specific tool.
+
+By focusing on the registry modification itself, it can detect changes made by:
+
+- reg.exe
+- PowerShell
+- Win32 APIs
+- .NET APIs
+- Custom malware
+
+Target Registry Path:
+
+```
+HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\
+CapabilityAccessManager\ConsentStore\microphone
+```
 
 ---
 
-## False Positives
+# Required Telemetry
+
+- Sysmon Event ID 13 – Registry Value Set
+
+---
+
+# Investigation Guide
+
+1. Review the modified registry path and value.
+2. Identify the process responsible for the modification.
+3. Determine whether the process is trusted and expected.
+4. Pivot on `host.name` and `user.name` to identify related activity.
+5. Investigate for additional persistence, process execution, or network activity.
+6. Escalate if the modification originated from an unexpected or unsigned process.
+
+---
+
+# Recommended Elastic Fields
+
+- `@timestamp`
+- `host.name`
+- `user.name`
+- `registry.path`
+- `registry.value`
+- `registry.data.strings`
+- `process.name`
+- `process.executable`
+- `process.command_line`
+- `event.code`
+
+---
+
+# Rule Configuration
+
+| Setting | Value |
+| --- | --- |
+| Runs Every | 5 Minutes |
+| Additional Look-back | 1 Minute |
+| Alert Suppression | `host.id` + `user.name` |
+| Suppression Duration | 10 Minutes |
+
+---
+
+# Exceptions
+
+### Name
+
+**Trusted Collaboration Applications**
+
+### Description
+
+Exclude trusted collaboration and conferencing applications that legitimately modify Windows microphone privacy settings.
+
+Examples:
 
 - Microsoft Teams
 - Zoom
-- Discord
-- OBS Studio
-- Windows Sound Recorder
+- Cisco Webex
+- Slack
 
-These applications should be baselined before deployment.
-
----
-
-## Limitations
-
-This detection does **not** confirm microphone access.
-
-Higher confidence would require:
-
-- Microsoft Defender for Endpoint DeviceEvents
-- Endpoint sensor telemetry
-- Microphone permission auditing
+> Prefer trusted code signatures over process names whenever possible.
+> 
 
 ---
 
-## Future Improvements
+# False Positives
 
-- Behavioral baselining
-- Parent-child anomaly detection
-- Correlation with outbound network traffic
-- Correlation with file creation events
+- Collaboration software
+- Enterprise conferencing tools
+- Audio management software
+- Endpoint management solutions
+
+---
+
+# MITRE ATT&CK Mapping
+
+| Tactic | Technique |
+| --- | --- |
+| Collection | T1123 - Audio Capture |
+
+---
+
+# Detection Engineering Notes
+
+- Detects **registry modifications**, not process execution.
+- More resilient than Event ID 1 because it identifies the configuration change regardless of the tool used.
+- If Event ID 13 is unavailable, consider a fallback detection using Sysmon Event ID 1 targeting the same registry path.
+
+---
+
+# Validation
+
+**Tested With**
+
+- Atomic Red Team
+- Elastic Security
+- Sysmon
+- Windows 11 Enterprise
+
+**Expected Result**
+
+An alert is generated whenever a registry value under the following path is modified:
+
+```
+HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\
+CapabilityAccessManager\ConsentStore\microphone
+```
+
+---
+
+# References
+
+- MITRE ATT&CK: https://attack.mitre.org/techniques/T1123/
+- Sysmon Documentation: https://learn.microsoft.com/sysinternals/downloads/sysmon
+- Elastic Security Documentation: https://www.elastic.co/guide/en/security/current/index.html
