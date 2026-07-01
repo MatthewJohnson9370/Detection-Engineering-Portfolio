@@ -55,6 +55,25 @@ I would keep this low severity unless the activity is unusual for the user, host
 
 ---
 
+## Tuning and Expected Benign Activity
+
+I would not add broad exclusions before collecting baseline data.
+
+In an enterprise environment, microphone-related registry activity may be expected from approved conferencing, clinical dictation, accessibility, recording, and collaboration software. PowerShell-based recording-device selection may also be legitimate when used by approved IT automation or endpoint configuration scripts.
+
+For this lab project, I did not add production exclusions because the activity was only tested in an isolated environment.
+
+If tuning is required, I would keep exclusions narrow and based on validated business activity, such as:
+
+- A known approved executable path and publisher
+- A specific signed PowerShell script or approved automation account
+- A documented host group used for dictation or conferencing
+- A known endpoint-management workflow
+
+I would avoid broad exclusions such as excluding all PowerShell activity, all microphone ConsentStore changes, or all collaboration applications. Those exclusions could hide suspicious behavior occurring through otherwise legitimate software.
+
+---
+
 ## Detection Gaps
 
 Neither rule identifies every form of audio capture. An attacker could use a custom binary, a remote-access tool, a browser-based application, or direct Windows APIs without generating the same PowerShell or registry telemetry.
