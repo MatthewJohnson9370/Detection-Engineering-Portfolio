@@ -19,7 +19,11 @@ event.dataset:"windows.sysmon_operational" and
 event.code:"13" and
 registry.path:*CapabilityAccessManager* and
 registry.path:*ConsentStore* and
-registry.path:*microphone*
+registry.path:*microphone* and
+(
+  registry.path:*LastUsedTimeStart* or
+  registry.path:*LastUsedTimeStop*
+)
 ```
 
 > **Note:** If `registry.path` is not populated in your environment, use the equivalent field (e.g., `winlog.event_data.TargetObject`) after validating your Sysmon ingestion pipeline.
