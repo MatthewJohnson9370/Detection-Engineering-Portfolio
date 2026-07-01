@@ -1,0 +1,5 @@
+event.dataset:"windows.powershell_operational" and
+event.code:"4104" and
+powershell.file.script_block_text:*Get-AudioDevice* and
+powershell.file.script_block_text:*Set-AudioDevice* and
+powershell.file.script_block_text:*Recording*
