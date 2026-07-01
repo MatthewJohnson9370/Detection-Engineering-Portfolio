@@ -1,35 +1,18 @@
-# Detection Logic — T1123 Audio Capture
+# Detection Notes — T1123 Audio Capture
 
-## Objective
+## Summary
 
-Detect suspicious Windows microphone-related activity associated with **MITRE ATT&CK T1123 — Audio Capture**.
+For this project, I tested two different ways to generate microphone-related activity on Windows.
 
-This project uses two complementary analytics:
+The first detection looks for registry changes under the Windows microphone ConsentStore path. The second looks for PowerShell using `AudioDeviceCmdlets` to identify and select a recording device.
 
-1. Microphone ConsentStore registry modifications.
-2. PowerShell-based recording-device enumeration and selection.
-
-Neither detection independently proves that audio was recorded. They are intended as detection signals that require investigation and correlation with surrounding activity.
+I would treat both as low-severity signals in an enterprise environment. Neither one proves that a user or attacker recorded audio, but they can be useful when paired with suspicious process activity, audio-file creation, or outbound network traffic.
 
 ---
 
-## Required Telemetry
+## Detection 1 — Microphone ConsentStore Registry Activity
 
-| Source                     | Requirement                                                 |
-| -------------------------- | ----------------------------------------------------------- |
-| Sysmon                     | Event ID 13 — Registry Value Set                            |
-| PowerShell Operational Log | Event ID 4104 — Script Block Logging                        |
-| Elastic Agent              | Windows integration collecting Sysmon and PowerShell events |
-
----
-
-## Detection 1 — Microphone ConsentStore Registry Modification
-
-### Purpose
-
-Detect registry value modifications under the Windows microphone ConsentStore path. This can provide evidence of microphone consent or usage-related activity.
-
-### Elastic KQL
+This was the original detection developed from Sysmon Event ID 13 telemetry.
 
 ```kql
 event.dataset:"windows.sysmon_operational" and
@@ -39,25 +22,17 @@ registry.path:*ConsentStore* and
 registry.path:*microphone*
 ```
 
-### Why It Matters
+This rule identifies registry value changes related to microphone consent or usage. In a lab, it provides useful evidence that an application interacted with Windows microphone-related settings or artifacts.
 
-An attacker or malicious application may interact with microphone-related consent or usage artifacts while preparing to capture audio. This rule detects the registry behavior rather than a specific recording application.
+In a production environment, I would expect legitimate hits from conferencing, dictation, accessibility, and recording software. Because of that, I would start this as a low-severity rule and baseline which applications normally generate events in this path.
 
-### Recommended Severity
-
-**Low**
-
-This activity can be legitimate on endpoints using conferencing, clinical dictation, accessibility, or approved recording software.
+A future tuning option would be narrowing the rule to usage timestamp values such as `LastUsedTimeStart` and `LastUsedTimeStop` if those values appear consistently in the collected telemetry.
 
 ---
 
-## Detection 2 — PowerShell Recording Device Enumeration and Selection
+## Detection 2 — PowerShell Recording Device Selection
 
-### Purpose
-
-Detect PowerShell using `AudioDeviceCmdlets` to enumerate recording devices and set a recording device.
-
-This covers the Atomic Red Team T1123 simulation:
+The Atomic Red Team test uses PowerShell to locate a recording device and set it as the active audio device:
 
 ```powershell
 $mic = Get-AudioDevice -Recording
@@ -65,81 +40,29 @@ Set-AudioDevice -ID $mic.ID
 Start-Sleep -Seconds 5
 ```
 
-### Elastic KQL
+To identify this procedure, I would use PowerShell Script Block Logging and look for the combination of recording-device enumeration and selection:
 
 ```kql
-event.dataset:"windows.powershell_operational" and
 event.code:"4104" and
 powershell.file.script_block_text:*Get-AudioDevice* and
 powershell.file.script_block_text:*Set-AudioDevice* and
 powershell.file.script_block_text:*Recording*
 ```
 
-### Why It Matters
+This is more useful than alerting on PowerShell alone because it requires a specific sequence of audio-device actions. It still does not confirm that recording occurred; it only shows that PowerShell was used to identify and select a microphone or recording device.
 
-This combination is more specific than alerting on PowerShell or audio-related applications alone:
-
-* `Get-AudioDevice -Recording` enumerates recording devices.
-* `Set-AudioDevice` changes the selected device.
-* Script Block Logging captures the executed PowerShell content.
-
-This rule detects suspicious preparation for audio capture, but does not confirm that recording occurred.
-
-### Recommended Severity
-
-**Low during initial baselining.**
-
-Promote to **Medium** only after confirming that approved IT automation, clinical dictation tooling, and endpoint configuration scripts do not use this cmdlet combination.
+I would keep this low severity unless the activity is unusual for the user, host, script path, or parent process.
 
 ---
 
-## Tuning Considerations
+## Detection Gaps
 
-Avoid broad exclusions such as excluding all PowerShell or all microphone-related activity.
+Neither rule identifies every form of audio capture. An attacker could use a custom binary, a remote-access tool, a browser-based application, or direct Windows APIs without generating the same PowerShell or registry telemetry.
 
-Instead, baseline and allowlist only verified business activity based on:
-
-* Approved script path or script signer
-* Known automation account
-* Approved endpoint-management process
-* Specific host groups, such as dictation or conferencing systems
-* Consistent and documented IT workflows
+The stronger detection path would be correlating microphone-related activity with nearby creation of audio files such as `.wav`, `.mp3`, `.m4a`, `.aac`, or `.flac`, especially when the same process also makes unusual outbound network connections.
 
 ---
 
-## Investigation Guidance
+## Recommendation
 
-When either alert fires:
-
-1. Identify the host, user, process, and parent process.
-2. Determine whether the host uses approved dictation, conferencing, or recording software.
-3. Review related PowerShell Event ID 4104 logs for additional commands.
-4. Check Sysmon Event ID 11 for nearby audio file creation, including `.wav`, `.mp3`, `.m4a`, `.aac`, or `.flac`.
-5. Review Sysmon Event ID 3 for suspicious outbound connections from the related process.
-6. Investigate unusual execution paths, unsigned scripts, temporary directories, Downloads, and network shares.
-7. Escalate when microphone-related activity is paired with suspicious file creation, archive creation, or outbound data transfer.
-
----
-
-## Detection Limitations
-
-* Registry modifications do not prove that microphone audio was captured.
-* The PowerShell rule detects a specific procedure and may miss custom tooling or direct Windows API usage.
-* Legitimate conferencing and clinical applications can generate microphone-related activity.
-* High-confidence detection requires correlation with audio-file creation and suspicious follow-on behavior.
-
----
-
-## Future Improvement
-
-Build a correlation detection that identifies:
-
-```text
-Microphone-related activity
-        +
-Audio file creation
-        +
-Suspicious process or outbound network activity
-```
-
-This would provide stronger evidence of potential audio capture and collection.
+I would use these detections as supporting collection signals rather than standalone high-confidence alerts. Their value increases when they occur alongside suspicious scripting, unexpected execution paths, archive creation, or potential exfiltration activity.
