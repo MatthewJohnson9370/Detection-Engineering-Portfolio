@@ -1,0 +1,5 @@
+event.dataset:"windows.sysmon_operational" and
+event.code:"13" and
+registry.path:*CapabilityAccessManager* and
+registry.path:*ConsentStore* and
+registry.path:*microphone*
