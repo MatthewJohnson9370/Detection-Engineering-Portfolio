@@ -44,7 +44,6 @@ Microphone activity is expected on systems using Teams, Zoom, clinical dictation
 | `investigation.md` | Notes for reviewing an alert                                                |
 | `rules/`           | Copy-ready Elastic KQL detections                                           |
 | `screenshots/`     | Evidence of the attack, telemetry, and alert                                |
-| `logs/`            | Sanitized sample events collected during testing                            |
 
 ## References
 
